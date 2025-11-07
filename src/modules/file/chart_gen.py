@@ -42,14 +42,14 @@ def generate_charts(dataframe):
                     x=column,
                     title=f"Histogram for {column}",
                 )
-                st.plotly_chart(fig_hist, use_container_width=True)
+                st.plotly_chart(fig_hist, width='stretch')
                 # Create an interactive box plot using Plotly
                 fig_box = px.box(
                     quantitative_columns,
                     x=column,
                     title=f"Box Plot for {column}",
                 )
-                st.plotly_chart(fig_box, use_container_width=True)
+                st.plotly_chart(fig_box, width='stretch')
                 # 2x2
                 fig_hist = px.histogram(
                     quantitative_columns,
@@ -57,7 +57,7 @@ def generate_charts(dataframe):
                     title=f"Histogram for {column}",
                     width=500,
                 )
-                st.plotly_chart(fig_hist, use_container_width=True)
+                st.plotly_chart(fig_hist, width='content')
                 # Create an interactive box plot using Plotly
                 fig_box = px.box(
                     quantitative_columns,
@@ -65,7 +65,7 @@ def generate_charts(dataframe):
                     title=f"Box Plot for {column}",
                     width=500,
                 )
-                st.plotly_chart(fig_box, use_container_width=True)
+                st.plotly_chart(fig_box, width='content')
                 # Create an interactive scatter plot using Plotly
                 fig_scatter = px.scatter(
                     quantitative_columns,
@@ -74,7 +74,7 @@ def generate_charts(dataframe):
                     title=f"Scatter Plot for {column}",
                     width=500,
                 )
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, width='content')
                 # Create an interactive violin plot using Plotly
                 fig_violin = px.violin(
                     quantitative_columns,
@@ -82,7 +82,7 @@ def generate_charts(dataframe):
                     title=f"Violin Plot for {column}",
                     width=500,
                 )
-                st.plotly_chart(fig_violin, use_container_width=True)
+                st.plotly_chart(fig_violin, width='content')
             status.update(label="Computed ✅", state="complete", expanded=False)
         else:
             st.warning("No Quantitative Data Present in any Column 💀")

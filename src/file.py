@@ -13,7 +13,7 @@ from src.modules.file.query import query_csv_transformers
 # Initialize a variable to store the DataFrame
 df = None
 history = []
-counter = 0
+counter = 0 
 
 
 def page_file(uploaded_file):
