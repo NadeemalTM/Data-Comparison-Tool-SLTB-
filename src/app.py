@@ -5,6 +5,8 @@ import plotly.express as px
 from datetime import datetime
 import requests
 from io import BytesIO
+import unicodedata
+import re
 
 # Page configuration
 st.set_page_config(
@@ -69,8 +71,19 @@ with col1:
     file_a = st.file_uploader("Upload your first dataset", type=["csv"])
     if file_a:
         df_a = pd.read_csv(file_a, low_memory=False)
+        # Normalize column names: ensure they are strings and strip surrounding whitespace
+        def _clean_col_name(s):
+            # Normalize unicode, remove BOM and non-breaking spaces, collapse whitespace, strip
+            s = str(s)
+            s = unicodedata.normalize('NFKC', s)
+            s = s.replace('\ufeff', '')
+            s = s.replace('\xa0', ' ')
+            s = re.sub(r"\s+", ' ', s)
+            return s.strip()
+
+        df_a.columns = [_clean_col_name(c) for c in df_a.columns]
         with st.expander("Preview Dataset A", expanded=True):
-            st.dataframe(df_a.head(), width='stretch')
+            st.dataframe(df_a.head())
             st.caption(f"Total rows: {len(df_a)} | Total columns: {len(df_a.columns)}")
 
             # Quick stats for numeric columns
@@ -85,8 +98,10 @@ with col2:
     file_b = st.file_uploader("Upload your second dataset", type=["csv"])
     if file_b:
         df_b = pd.read_csv(file_b, low_memory=False)
+        # Normalize column names: ensure they are strings and strip surrounding whitespace
+        df_b.columns = [_clean_col_name(c) for c in df_b.columns]
         with st.expander("Preview Dataset B", expanded=True):
-            st.dataframe(df_b.head(), width='stretch')
+            st.dataframe(df_b.head())
             st.caption(f"Total rows: {len(df_b)} | Total columns: {len(df_b.columns)}")
 
             # Quick stats for numeric columns
@@ -168,17 +183,47 @@ if file_a and file_b:
                 for col in df_b_prep.columns:
                     if col not in resolved_join:
                         df_b_prep[col] = df_b_prep[col].fillna('').astype(str).str.strip()
+                        
+                
 
                 # Create comparison
-                comp = datacompy.Compare(
-                    df_a_prep,
-                    df_b_prep,
-                    join_columns=resolved_join,
-                    abs_tol=tolerance,
-                    rel_tol=tolerance,
-                    ignore_spaces=True,
-                    ignore_case=True
-                )
+                import traceback
+
+                # Debug diagnostics before datacompy.Compare
+                st.info("Debug: verifying join columns and samples")
+                st.write("resolved_join:", resolved_join)
+                st.write("df_a_prep columns:", [repr(c) for c in df_a_prep.columns])
+                st.write("df_b_prep columns:", [repr(c) for c in df_b_prep.columns])
+
+                for col in resolved_join:
+                    st.write(f"--- Diagnostics for key: {repr(col)} ---")
+                    st.write("present in A:", col in df_a_prep.columns, "present in B:", col in df_b_prep.columns)
+                    if col in df_a_prep.columns:
+                        s = df_a_prep[col].astype(str)
+                        st.write("A: nulls (empty strings):", int((s == "").sum()), "non-null sample:", s[s != ""].head(10).tolist())
+                        st.write("A: unique count (non-empty):", int(s[s != ""].nunique()), "A: total rows:", len(s))
+                        st.write("A: duplicates on key (rows - unique):", len(s) - int(s.nunique()))
+                    if col in df_b_prep.columns:
+                        s = df_b_prep[col].astype(str)
+                        st.write("B: nulls (empty strings):", int((s == "").sum()), "non-null sample:", s[s != ""].head(10).tolist())
+                        st.write("B: unique count (non-empty):", int(s[s != ""].nunique()), "B: total rows:", len(s))
+                        st.write("B: duplicates on key (rows - unique):", len(s) - int(s.nunique()))
+
+                try:
+                    comp = datacompy.Compare(
+                        df_a_prep,
+                        df_b_prep,
+                        join_columns=resolved_join,
+                        abs_tol=tolerance,
+                        rel_tol=tolerance,
+                        ignore_spaces=True,
+                        ignore_case=True
+                    )
+                except Exception as _e:
+                    st.error("Error creating datacompy.Compare")
+                    st.exception(_e)
+                    st.code(traceback.format_exc())
+                    raise
 
                 # Results in cards
                 st.markdown("### 📊 Comparison Results")
@@ -295,7 +340,7 @@ if file_a and file_b:
                             title_a = "Distribution in Dataset A: " + selected_col
                             fig = px.box(df_a, y=selected_col, title=title_a)
                             st.plotly_chart(fig, width='stretch', key="stats_a_chart")
-
+                            
                         with col2:
                             title_b = "Distribution in Dataset B: " + selected_col
                             fig = px.box(df_b, y=selected_col, title=title_b)
@@ -314,7 +359,7 @@ if file_a and file_b:
                 with tabs[3]:
                     if mismatched_preview is not None and not mismatched_preview.empty:
                         st.write(f"Showing top {len(mismatched_preview)} mismatched rows (keys + compared columns)")
-                        st.dataframe(mismatched_preview, width='stretch')
+                        st.dataframe(mismatched_preview)
                         if st.button("📥 Export mismatched rows (CSV)"):
                             out_name = f"mismatched_rows_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                             mismatched_preview.to_csv(out_name, index=False)
@@ -322,4 +367,18 @@ if file_a and file_b:
                     else:
                         st.info("No mismatched rows detected for the selected key(s) and compared columns.")
             except Exception as e:
-                st.error(f"❌ Error comparing datasets: {str(e)}")
+                # Provide a clearer hint when a join/key column is missing or trimmed
+                err_msg = str(e)
+                st.error(f"❌ Error comparing datasets: {err_msg}")
+                try:
+                    # show column lists to help diagnose KeyError on join columns
+                    if 'file_a' in locals() and 'file_b' in locals():
+                        st.info("Column names in Dataset A (post-normalization):")
+                        # show reprs and lengths to reveal hidden characters
+                        st.write([repr(c) for c in df_a.columns])
+                        st.write([{'name': c, 'len': len(c)} for c in df_a.columns])
+                        st.info("Column names in Dataset B (post-normalization):")
+                        st.write([repr(c) for c in df_b.columns])
+                        st.write([{'name': c, 'len': len(c)} for c in df_b.columns])
+                except Exception:
+                    pass
