@@ -189,25 +189,132 @@ if file_a and file_b:
                 # Create comparison
                 import traceback
 
-                # Debug diagnostics before datacompy.Compare
-                st.info("Debug: verifying join columns and samples")
-                st.write("resolved_join:", resolved_join)
-                st.write("df_a_prep columns:", [repr(c) for c in df_a_prep.columns])
-                st.write("df_b_prep columns:", [repr(c) for c in df_b_prep.columns])
-
+                # ===== KEY STATISTICS VISUALIZATION =====
+                st.markdown("### 🔑 Key Column Statistics")
+                
+                # Collect statistics for each join column
+                key_stats_a = {}
+                key_stats_b = {}
+                
                 for col in resolved_join:
-                    st.write(f"--- Diagnostics for key: {repr(col)} ---")
-                    st.write("present in A:", col in df_a_prep.columns, "present in B:", col in df_b_prep.columns)
                     if col in df_a_prep.columns:
-                        s = df_a_prep[col].astype(str)
-                        st.write("A: nulls (empty strings):", int((s == "").sum()), "non-null sample:", s[s != ""].head(10).tolist())
-                        st.write("A: unique count (non-empty):", int(s[s != ""].nunique()), "A: total rows:", len(s))
-                        st.write("A: duplicates on key (rows - unique):", len(s) - int(s.nunique()))
+                        s_a = df_a_prep[col].astype(str)
+                        key_stats_a[col] = {
+                            'total_rows': len(s_a),
+                            'unique_count': int(s_a[s_a != ""].nunique()),
+                            'nulls': int((s_a == "").sum()),
+                            'duplicates': len(s_a) - int(s_a.nunique()),
+                            'non_null_sample': s_a[s_a != ""].head(5).tolist()
+                        }
+                    
                     if col in df_b_prep.columns:
-                        s = df_b_prep[col].astype(str)
-                        st.write("B: nulls (empty strings):", int((s == "").sum()), "non-null sample:", s[s != ""].head(10).tolist())
-                        st.write("B: unique count (non-empty):", int(s[s != ""].nunique()), "B: total rows:", len(s))
-                        st.write("B: duplicates on key (rows - unique):", len(s) - int(s.nunique()))
+                        s_b = df_b_prep[col].astype(str)
+                        key_stats_b[col] = {
+                            'total_rows': len(s_b),
+                            'unique_count': int(s_b[s_b != ""].nunique()),
+                            'nulls': int((s_b == "").sum()),
+                            'duplicates': len(s_b) - int(s_b.nunique()),
+                            'non_null_sample': s_b[s_b != ""].head(5).tolist()
+                        }
+                
+                # Display statistics in organized columns for each key
+                for col in resolved_join:
+                    st.markdown(f"#### 📊 Key Column: `{col}`")
+                    
+                    col_left, col_right = st.columns(2)
+                    
+                    with col_left:
+                        st.markdown("**📁 Dataset A**")
+                        if col in key_stats_a:
+                            stats = key_stats_a[col]
+                            
+                            # Metrics in sub-columns
+                            m1, m2, m3 = st.columns(3)
+                            with m1:
+                                st.metric("Total Rows", f"{stats['total_rows']:,}")
+                            with m2:
+                                st.metric("Unique Values", f"{stats['unique_count']:,}")
+                            with m3:
+                                st.metric("Nulls/Empty", f"{stats['nulls']:,}")
+                            
+                            # Duplicates indicator
+                            if stats['duplicates'] > 0:
+                                st.warning(f"⚠️ {stats['duplicates']:,} duplicate rows detected")
+                            else:
+                                st.success("✅ No duplicates found")
+                            
+                            # Sample values
+                            if stats['non_null_sample']:
+                                with st.expander("🔍 Sample Values"):
+                                    for i, val in enumerate(stats['non_null_sample'][:5], 1):
+                                        st.text(f"{i}. {val}")
+                        else:
+                            st.error(f"Column '{col}' not found in Dataset A")
+                    
+                    with col_right:
+                        st.markdown("**📁 Dataset B**")
+                        if col in key_stats_b:
+                            stats = key_stats_b[col]
+                            
+                            # Metrics in sub-columns
+                            m1, m2, m3 = st.columns(3)
+                            with m1:
+                                st.metric("Total Rows", f"{stats['total_rows']:,}")
+                            with m2:
+                                st.metric("Unique Values", f"{stats['unique_count']:,}")
+                            with m3:
+                                st.metric("Nulls/Empty", f"{stats['nulls']:,}")
+                            
+                            # Duplicates indicator
+                            if stats['duplicates'] > 0:
+                                st.warning(f"⚠️ {stats['duplicates']:,} duplicate rows detected")
+                            else:
+                                st.success("✅ No duplicates found")
+                            
+                            # Sample values
+                            if stats['non_null_sample']:
+                                with st.expander("🔍 Sample Values"):
+                                    for i, val in enumerate(stats['non_null_sample'][:5], 1):
+                                        st.text(f"{i}. {val}")
+                        else:
+                            st.error(f"Column '{col}' not found in Dataset B")
+                    
+                    st.markdown("---")
+                
+                # Visual comparison chart if there's only one key column
+                if len(resolved_join) == 1 and show_viz:
+                    col = resolved_join[0]
+                    if col in key_stats_a and col in key_stats_b:
+                        st.markdown("#### 📈 Visual Comparison")
+                        
+                        comparison_data = pd.DataFrame({
+                            'Metric': ['Total Rows', 'Unique Values', 'Nulls/Empty', 'Duplicates'],
+                            'Dataset A': [
+                                key_stats_a[col]['total_rows'],
+                                key_stats_a[col]['unique_count'],
+                                key_stats_a[col]['nulls'],
+                                key_stats_a[col]['duplicates']
+                            ],
+                            'Dataset B': [
+                                key_stats_b[col]['total_rows'],
+                                key_stats_b[col]['unique_count'],
+                                key_stats_b[col]['nulls'],
+                                key_stats_b[col]['duplicates']
+                            ]
+                        })
+                        
+                        fig = px.bar(
+                            comparison_data,
+                            x='Metric',
+                            y=['Dataset A', 'Dataset B'],
+                            barmode='group',
+                            title=f"Key Statistics Comparison: {col}",
+                            labels={'value': 'Count', 'variable': 'Dataset'},
+                            color_discrete_map={'Dataset A': '#636EFA', 'Dataset B': '#EF553B'}
+                        )
+                        st.plotly_chart(fig, use_container_width=True, key="key_stats_chart")
+                
+                st.markdown("---")
 
                 try:
                     comp = datacompy.Compare(
